@@ -47,9 +47,13 @@ That filter applies to the picker. A direct model lookup or a local `models.json
 
 A Claude model on Chat Completions takes a top-level `reasoning_effort`, and Copilot rejects a value outside the levels it declares for that model with a 400. The extension therefore:
 
-- offers thinking levels only on models whose catalog entry declares them;
+- lists thinking levels in the model picker only for models whose catalog entry declares them;
 - sends the level you pick as `reasoning_effort`;
-- sends no `reasoning_effort` when the level is not declared, or when the model declares none.
+- sends no `reasoning_effort` when the level is not declared, or when the model declares none. The level is dropped, not rounded to the nearest declared one.
+
+A running session can still show a level the model does not declare, because Pi resolves a session's model from the built-in catalog. The request is corrected either way.
+
+This applies to the models the extension converts to Chat Completions, such as Claude. A model the Copilot catalog already serves on Chat Completions, such as Gemini, keeps the thinking levels of Pi's built-in catalog.
 
 A credential created before version 0.2.0 has no levels stored. They appear after the next token refresh, or after signing in again.
 
@@ -72,6 +76,10 @@ The tests use fake credentials and replace `fetch` and `WebSocket`; an unexpecte
 | `index.ts` | The provider, the login with catalog discovery, the model filter and the reasoning-effort mapping |
 | `websocket.ts` | A `fetch` that sends a Responses request over a WebSocket and returns the frames as server-sent events |
 | `test.ts`, `websocket.test.ts` | Their tests |
+
+## Repository settings
+
+`scripts/configure-repository.sh` applies the settings this repository relies on through the GitHub CLI: squash-only merges, rulesets for `main` and `v*` tags, read-only and SHA-pinned Actions, secret scanning with push protection, and Dependabot alerts and fixes. It needs repository admin rights.
 
 ## Security
 
