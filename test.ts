@@ -327,7 +327,7 @@ test("a converted model sends only the reasoning effort Copilot declared for it"
 	assert.deepEqual(efforts, ["high", undefined, undefined, undefined]);
 });
 
-test("long cache retention marks a Claude request's system prompt and last message for one hour", async () => {
+test("long cache retention marks a Claude request's system prompt and last message for one hour", async (t) => {
 	const { provider, credentials, models } = setup();
 	await credentials.modify(provider.id, async () => fakeCredential());
 	const marks: [string, unknown][][] = [];
@@ -364,6 +364,10 @@ test("long cache retention marks a Claude request's system prompt and last messa
 	await models.completeSimple(claudeModel, context, { fetch, cacheRetention: "short" });
 	await models.completeSimple(claudeModel, context, { fetch, env: { PI_CACHE_RETENTION: "long" } });
 	await models.completeSimple(geminiModel, context, { fetch, cacheRetention: "long" });
+	// An env without the variable falls back to the process environment, as pi-ai does.
+	t.mock.property(process.env, "PI_CACHE_RETENTION", "long");
+	await models.completeSimple(claudeModel, context, { fetch, env: { OTHER: "x" } });
+	assert.deepEqual(marks[4], marks[0]);
 	assert.ok(seen);
 	assert.deepEqual(
 		marks[0].map(([, mark]) => mark),

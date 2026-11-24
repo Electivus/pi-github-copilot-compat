@@ -183,7 +183,7 @@ function acceptedLevel<L extends keyof ThinkingLevelMap>(model: Model<Api>, leve
 // Copilot caches a Claude prompt for five minutes by itself. With long retention the request marks the system
 // prompt and the last message, and Copilot keeps the prefix up to each mark for one hour, at the higher write price.
 function withLongCache<T extends StreamOptions>(options: T | undefined) {
-	const retention = options?.cacheRetention ?? (options?.env ?? process.env).PI_CACHE_RETENTION;
+	const retention = options?.cacheRetention ?? options?.env?.PI_CACHE_RETENTION ?? process.env.PI_CACHE_RETENTION;
 	if (retention !== "long") return options;
 	const next = options?.onPayload;
 	const onPayload: StreamOptions["onPayload"] = async (payload, model) => {

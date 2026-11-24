@@ -74,7 +74,7 @@ Measured on a Copilot Business account in November 2026:
 
 So long retention costs more per write and pays off when a session has pauses over five minutes. `ttl` is not documented for Chat Completions; Copilot accepted and billed it when measured, and that can change.
 
-Converted Claude models also declare these two lifetimes, so Pi's cache warming (`cacheWarming` in Pi's settings) can keep an idle cache alive. Each warm is one more request, billed at the cache-read price.
+Converted Claude models also declare these two lifetimes, which makes them eligible for Pi's cache warming under any retention. Pi's `cacheWarming` setting is `"idle"` by default, so warming is on unless you turn it off. Each warm repeats the last request with a one-token output cap; when measured, that request read the whole prompt from the cache, so it is billed at the cache-read price plus one output token.
 
 ## Development
 
