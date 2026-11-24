@@ -1,54 +1,82 @@
 # pi-github-copilot-compat
 
-Extensão do [Pi](https://github.com/earendil-works/pi) que registra o provedor `github-copilot-compat`. Ele dá acesso aos modelos do GitHub Copilot por dois caminhos que o provedor nativo `github-copilot` não oferece:
+A [Pi](https://github.com/earendil-works/pi) extension that registers the provider `github-copilot-compat`. It reaches GitHub Copilot models over two transports that Pi's built-in `github-copilot` provider does not use:
 
-- **Chat Completions**: cada modelo do catálogo do Copilot, chamado por `/chat/completions`.
-- **Responses por WebSocket**: para cada modelo que fala a API Responses, um segundo modelo com o sufixo `-ws`, que usa só WebSocket e nunca cai para HTTP.
+- **Chat Completions**: every model of the Copilot catalog, called on `/chat/completions`.
+- **Responses over WebSocket**: for each model that speaks the Responses API, a second model with the suffix `-ws`. It uses the WebSocket only and never falls back to HTTP.
 
-## Como funciona
+It exists for networks where the built-in provider's transports are blocked or disabled and these two still work.
 
-- O login é o OAuth nativo do Copilot, incluindo a configuração de políticas de modelo. As credenciais ficam guardadas separadas das do provedor nativo.
-- Depois de cada login e de cada renovação do token, a extensão consulta `/models` na API do Copilot e guarda quais modelos anunciam `/chat/completions` e `ws:/responses`.
-- O seletor de modelos mostra só os modelos confirmados nessa consulta. Um modelo desativado por política ou sem suporte a ferramentas fica de fora.
-- Se a consulta falhar, a lista anterior é descartada e nenhum modelo aparece até uma renovação ou um login que consiga consultar o catálogo.
+This is an independent project. It is not affiliated with, endorsed by, or supported by GitHub or the Pi maintainers. It calls the same Copilot endpoints the built-in provider calls, with your own Copilot subscription, and your use of Copilot stays under GitHub's terms.
 
-Esse filtro vale para o seletor. Uma busca direta por modelo ou uma substituição local em `models.json` passa por fora dele, então ele não é uma barreira de segurança.
+## Install
 
-## Instalação
-
-Como pacote do Pi (o repositório é privado, então o `git` precisa estar autenticado no GitHub):
+Requires Pi 1.6.0 or newer.
 
 ```bash
 pi install git:github.com/Electivus/pi-github-copilot-compat
 ```
 
-Para testar sem instalar, a partir de um clone:
+To try it from a clone without installing:
 
 ```bash
 pi -e ./index.ts
 ```
 
-Depois, dentro do Pi:
+Then, inside Pi:
 
 ```
 /login github-copilot-compat
 ```
 
-Quem já tinha feito login numa versão anterior precisa fazer de novo para atualizar o catálogo.
+The login is Pi's own GitHub Copilot OAuth flow, including its model-policy setup. The credential is stored under this provider's name, separate from the built-in provider's.
 
-## Testes
+## How it works
 
-Requer Node 22.19 ou mais novo.
+After every login and every token refresh, the extension reads Copilot's `/models` catalog once and stores three things with the credential:
+
+- which models advertise `/chat/completions`;
+- which models advertise `ws:/responses`;
+- which `reasoning_effort` values each Chat Completions model accepts.
+
+The model picker lists only the models that catalog confirmed. A model that a policy disables, or that does not support tool calls, is left out. If the catalog cannot be read, the previous lists are dropped and no model is offered until a refresh or a login reads it again.
+
+That filter applies to the picker. A direct model lookup or a local `models.json` override goes around it, so it is not a security boundary.
+
+### Reasoning effort
+
+A Claude model on Chat Completions takes a top-level `reasoning_effort`, and Copilot rejects a value outside the levels it declares for that model with a 400. The extension therefore:
+
+- offers thinking levels only on models whose catalog entry declares them;
+- sends the level you pick as `reasoning_effort`;
+- sends no `reasoning_effort` when the level is not declared, or when the model declares none.
+
+A credential created before version 0.2.0 has no levels stored. They appear after the next token refresh, or after signing in again.
+
+Copilot does not return the reasoning text for every model, so Pi may show no thinking block even though the model reasoned and the tokens were counted.
+
+## Development
+
+Requires Node.js 24 or newer.
 
 ```bash
-npm install --ignore-scripts
+npm ci --ignore-scripts
+npm run check
 npm test
 ```
 
-Os testes usam credenciais falsas e substituem `fetch` e `WebSocket`; uma requisição inesperada faz o teste falhar.
+The tests use fake credentials and replace `fetch` and `WebSocket`; an unexpected request fails the test.
 
-## Arquivos
+| File | Contents |
+| --- | --- |
+| `index.ts` | The provider, the login with catalog discovery, the model filter and the reasoning-effort mapping |
+| `websocket.ts` | A `fetch` that sends a Responses request over a WebSocket and returns the frames as server-sent events |
+| `test.ts`, `websocket.test.ts` | Their tests |
 
-- `index.ts`: o provedor, o login com descoberta do catálogo e o filtro de modelos.
-- `websocket.ts`: um `fetch` que envia a requisição Responses por WebSocket e devolve os quadros como SSE.
-- `test.ts`, `websocket.test.ts`: os testes de cada um.
+## Security
+
+See [SECURITY.md](SECURITY.md) for how to report a vulnerability.
+
+## License
+
+[MIT](LICENSE)
