@@ -327,6 +327,62 @@ test("a converted model sends only the reasoning effort Copilot declared for it"
 	assert.deepEqual(efforts, ["high", undefined, undefined, undefined]);
 });
 
+test("long cache retention marks a Claude request's system prompt and last message for one hour", async (t) => {
+	const { provider, credentials, models } = setup();
+	await credentials.modify(provider.id, async () => fakeCredential());
+	const marks: [string, unknown][][] = [];
+	const fetch: typeof globalThis.fetch = async (input, init) => {
+		const payload: { messages: { role: string; copilot_cache_control?: unknown }[] } = await new Request(
+			input,
+			init,
+		).json();
+		marks.push(payload.messages.map((message): [string, unknown] => [message.role, message.copilot_cache_control]));
+		const chunk = { id: "fake-chunk", choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }] };
+		return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, {
+			headers: { "Content-Type": "text/event-stream" },
+		});
+	};
+	const context: Context = {
+		systemPrompt: "Be brief.",
+		messages: [
+			{ role: "user", timestamp: 0, content: "First" },
+			{ role: "user", timestamp: 0, content: "Second" },
+		],
+	};
+	const hour = { type: "ephemeral", ttl: "1h" };
+	const claudeModel = models.getModel(provider.id, claude);
+	const geminiModel = models.getModel(provider.id, gemini);
+	assert.ok(claudeModel && geminiModel);
+	assert.deepEqual(claudeModel.promptCache, { short: 300, long: 3600 });
+
+	let seen = false;
+	const onPayload = (payload: unknown) => {
+		seen = true;
+		return payload;
+	};
+	await models.completeSimple(claudeModel, context, { fetch, cacheRetention: "long", onPayload });
+	await models.completeSimple(claudeModel, context, { fetch, cacheRetention: "short" });
+	await models.completeSimple(claudeModel, context, { fetch, env: { PI_CACHE_RETENTION: "long" } });
+	await models.completeSimple(geminiModel, context, { fetch, cacheRetention: "long" });
+	// An env without the variable falls back to the process environment, as pi-ai does.
+	const previous = process.env.PI_CACHE_RETENTION;
+	process.env.PI_CACHE_RETENTION = "long";
+	t.after(() => {
+		if (previous === undefined) delete process.env.PI_CACHE_RETENTION;
+		else process.env.PI_CACHE_RETENTION = previous;
+	});
+	await models.completeSimple(claudeModel, context, { fetch, env: { OTHER: "x" } });
+	assert.deepEqual(marks[4], marks[0]);
+	assert.ok(seen);
+	assert.deepEqual(
+		marks[0].map(([, mark]) => mark),
+		[hour, undefined, hour],
+	);
+	assert.ok(marks[1].every(([, mark]) => mark === undefined));
+	assert.deepEqual(marks[2], marks[0]);
+	assert.ok(marks[3].every(([, mark]) => mark === undefined));
+});
+
 test("a WebSocket model sends its wire ID, streams tools, and never uses HTTP", async (t) => {
 	const { provider, credentials, models } = setup();
 	await credentials.modify(provider.id, async () =>

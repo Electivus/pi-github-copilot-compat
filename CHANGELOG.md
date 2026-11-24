@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0]
+
+### Added
+
+- One-hour prompt cache for Claude models on Chat Completions when long cache retention is requested (`PI_CACHE_RETENTION=long`).
+- Converted Claude models declare their prompt cache lifetimes, which makes them eligible for Pi's cache warming.
+
 ## [0.2.0]
 
 ### Added

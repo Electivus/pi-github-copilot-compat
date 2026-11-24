@@ -50,6 +50,7 @@ export function createCopilotCompatProvider(): Provider<CopilotApi> {
 	const responses = openAIResponsesApi();
 	const wireIds = new Map<string, string>();
 	const convertedIds = new Set<string>();
+	const claudeIds = new Set<string>();
 	// The levels of the credential last seen. A session resolves its model from the static catalog, which
 	// cannot know them, so each request applies them here.
 	let declared = new Map<string, ReadonlySet<string>>();
@@ -60,6 +61,7 @@ export function createCopilotCompatProvider(): Provider<CopilotApi> {
 	};
 	const models = catalog.flatMap((model): Model<CopilotApi>[] => {
 		if (!hasApi(model, "openai-completions")) convertedIds.add(model.id);
+		if (hasApi(model, "anthropic-messages")) claudeIds.add(model.id);
 		const chat = chatCompletionsModel(model);
 		if (!hasApi(model, "openai-responses")) return [chat];
 		const alias = `${model.id}-ws`;
@@ -117,14 +119,17 @@ export function createCopilotCompatProvider(): Provider<CopilotApi> {
 				stream: (model, context, options) => {
 					const request = forRequest(model);
 					// The provider map types this entry for any API, but it only ever receives Chat Completions options.
-					const completionsOptions: OpenAICompletionsOptions = withCopilotHeaders(context, options);
+					const completionsOptions: OpenAICompletionsOptions = withCopilotHeaders(
+						context,
+						claudeIds.has(model.id) ? withLongCache(options) : options,
+					);
 					completionsOptions.reasoningEffort = acceptedLevel(request, completionsOptions.reasoningEffort);
 					return completions.stream(request, context, completionsOptions);
 				},
 				streamSimple: (model, context, options) => {
 					const request = forRequest(model);
 					return completions.streamSimple(request, context, {
-						...withCopilotHeaders(context, options),
+						...withCopilotHeaders(context, claudeIds.has(model.id) ? withLongCache(options) : options),
 						reasoning: acceptedLevel(request, options?.reasoning),
 					});
 				},
@@ -145,7 +150,8 @@ function chatCompletionsModel(model: Model<Api>): Model<"openai-completions"> {
 		...model,
 		api: "openai-completions",
 		provider: id,
-		promptCache: undefined,
+		// Measured on Copilot: a Claude prompt cache entry lasts five minutes, or one hour when the request asks.
+		promptCache: hasApi(model, "anthropic-messages") ? { short: 300, long: 3600 } : undefined,
 		compat: {
 			supportsReasoningEffort: true,
 			thinkingFormat: "openai",
@@ -172,6 +178,32 @@ function withReasoningEffort<M extends Model<Api>>(model: M, levels: ReadonlySet
 function acceptedLevel<L extends keyof ThinkingLevelMap>(model: Model<Api>, level: L | undefined): L | undefined {
 	if (level === undefined || !model.reasoning) return undefined;
 	return model.thinkingLevelMap?.[level] === null ? undefined : level;
+}
+
+// Copilot caches a Claude prompt for five minutes by itself. With long retention the request marks the system
+// prompt and the last message, and Copilot keeps the prefix up to each mark for one hour, at the higher write price.
+function withLongCache<T extends StreamOptions>(options: T | undefined) {
+	const retention = options?.cacheRetention ?? options?.env?.PI_CACHE_RETENTION ?? process.env.PI_CACHE_RETENTION;
+	if (retention !== "long") return options;
+	const next = options?.onPayload;
+	const onPayload: StreamOptions["onPayload"] = async (payload, model) => {
+		markLongCache(payload);
+		return next ? next(payload, model) : payload;
+	};
+	return { ...options, onPayload };
+}
+
+function markLongCache(payload: unknown): void {
+	const messages = asRecord(payload)?.messages;
+	if (!Array.isArray(messages)) return;
+	const system = messages.find((message) => {
+		const role = asRecord(message)?.role;
+		return role === "system" || role === "developer";
+	});
+	for (const message of [system, messages.at(-1)]) {
+		const record = asRecord(message);
+		if (record) record.copilot_cache_control = { type: "ephemeral", ttl: "1h" };
+	}
 }
 
 function withCopilotHeaders<T extends StreamOptions>(context: TranscriptContext, options?: T) {

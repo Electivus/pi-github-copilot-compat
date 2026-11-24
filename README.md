@@ -59,6 +59,23 @@ A credential created before version 0.2.0 has no levels stored. They appear afte
 
 Copilot does not return the reasoning text for every model, so Pi may show no thinking block even though the model reasoned and the tokens were counted.
 
+### Prompt cache
+
+Copilot caches a Claude prompt by itself for five minutes, on Chat Completions as on the Messages API. A session that pauses longer, for example while subagents work, pays to write the whole context again.
+
+With long cache retention (`PI_CACHE_RETENTION=long`), the extension marks the system prompt and the last message of each Claude request with `copilot_cache_control: { "type": "ephemeral", "ttl": "1h" }`. Copilot then keeps the prefix up to each mark for one hour.
+
+Measured on a Copilot Business account in November 2026:
+
+| Cache write | Price against the input price |
+| --- | --- |
+| Five minutes (default) | 1.25x |
+| One hour | 2x |
+
+So long retention costs more per write and pays off when a session has pauses over five minutes. `ttl` is not documented for Chat Completions; Copilot accepted and billed it when measured, and that can change.
+
+Converted Claude models also declare these two lifetimes, which makes them eligible for Pi's cache warming under any retention. Pi's `cacheWarming` setting is `"idle"` by default, so warming is on unless you turn it off. Each warm repeats the last request with a one-token output cap; when measured, that request read the whole prompt from the cache, so it is billed at the cache-read price plus one output token.
+
 ## Development
 
 Requires Node.js 24 or newer.
