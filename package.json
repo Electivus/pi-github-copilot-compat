@@ -1,0 +1,25 @@
+{
+	"name": "pi-github-copilot-compat",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Pi extension: GitHub Copilot models over Chat Completions and Responses over WebSocket",
+	"type": "module",
+	"keywords": ["pi-package"],
+	"pi": {
+		"extensions": ["./index.ts"]
+	},
+	"scripts": {
+		"test": "node --test test.ts websocket.test.ts"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-ai": "1.6.0",
+		"@earendil-works/pi-coding-agent": "1.6.0"
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	}
+}
