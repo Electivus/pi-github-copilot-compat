@@ -89,8 +89,15 @@ test("native enterprise OAuth login gates exact advertised endpoints and keeps c
 				assert.ok(init?.signal);
 				assert.equal(request.headers.get("Editor-Version"), native.getModels()[0]?.headers?.["Editor-Version"]);
 				return catalogResponse(
-					modelEntry(claude, ["/v1/messages", modelPath]),
-					modelEntry(gemini, [modelPath]),
+					{
+						...modelEntry(claude, ["/v1/messages", modelPath]),
+						capabilities: { supports: { reasoning_effort: ["low", "high", "max"] } },
+					},
+					{ ...modelEntry(gemini, [modelPath]), capabilities: { supports: { reasoning_effort: ["low"] } } },
+					{
+						...modelEntry(websocketOnly, ["ws:/responses"]),
+						capabilities: { supports: { reasoning_effort: ["low"] } },
+					},
 					modelEntry(responsesOnly, ["/responses"]),
 					modelEntry(websocketOnly, ["ws:/responses"]),
 					modelEntry(disabled, [modelPath, "ws:/responses"]),
@@ -112,6 +119,7 @@ test("native enterprise OAuth login gates exact advertised endpoints and keeps c
 	assert.equal(result.type, "oauth");
 	assert.deepEqual(result.chatCompletionsModelIds, [claude, gemini]);
 	assert.deepEqual(result.webSocketModelIds, [websocketOnly]);
+	assert.deepEqual(result.reasoningEffortLevels, { [claude]: ["low", "high", "max"], [gemini]: ["low"] });
 	assert.deepEqual(result.availableModelIds, snapshot);
 	assert.equal(result.enterpriseUrl, "approved.ghe.test");
 	const available = await models.getAvailable(provider.id);
@@ -122,11 +130,21 @@ test("native enterprise OAuth login gates exact advertised endpoints and keeps c
 	]);
 	assert.ok(available.every((model) => model.provider === provider.id));
 	assert.equal(models.getModel(provider.id, websocketAlias)?.api, "openai-responses");
-	assert.equal(available.find(({ id }) => id === claude)?.reasoning, false);
-	assert.deepEqual(
-		available.find(({ id }) => id === gemini)?.compat,
-		native.getModels().find(({ id }) => id === gemini)?.compat,
-	);
+	const converted = available.find(({ id }) => id === claude);
+	assert.equal(converted?.reasoning, true);
+	assert.deepEqual(converted?.thinkingLevelMap, {
+		off: null,
+		minimal: null,
+		low: "low",
+		medium: null,
+		high: "high",
+		xhigh: null,
+		max: "max",
+	});
+	const nativeGemini = native.getModels().find(({ id }) => id === gemini);
+	const compatGemini = available.find(({ id }) => id === gemini);
+	assert.deepEqual(compatGemini?.compat, nativeGemini?.compat);
+	assert.deepEqual(compatGemini?.thinkingLevelMap, nativeGemini?.thinkingLevelMap);
 	assert.deepEqual(
 		(await models.getAvailable(native.id)).map(({ id }) => id),
 		[responsesOnly],
@@ -274,6 +292,41 @@ test("sends Claude to Chat Completions with Copilot headers and does not fall ba
 	assert.equal(requests.length, 2);
 });
 
+test("a converted model sends only the reasoning effort Copilot declared for it", async () => {
+	const { provider, credentials, models } = setup();
+	await credentials.modify(provider.id, async () =>
+		fakeCredential({ reasoningEffortLevels: { [claude]: ["low", "high"], [disabled]: ["high"] } }),
+	);
+	const available = await models.getAvailable(provider.id);
+	const model = available.find(({ id }) => id === claude);
+	assert.ok(model);
+	assert.equal(model.reasoning, true);
+	assert.ok(!available.some(({ id }) => id === disabled));
+	const efforts: unknown[] = [];
+	const fetch: typeof globalThis.fetch = async (input, init) => {
+		const payload: unknown = await new Request(input, init).json();
+		assert.ok(payload && typeof payload === "object");
+		efforts.push("reasoning_effort" in payload ? payload.reasoning_effort : undefined);
+		const chunk = { id: "fake-chunk", choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }] };
+		return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, {
+			headers: { "Content-Type": "text/event-stream" },
+		});
+	};
+	const context: Context = { messages: [{ role: "user", timestamp: 0, content: "Hello" }] };
+	// A session resolves its model from the static catalog, not from the credential's list.
+	const sessionModel = models.getModel(provider.id, claude);
+	assert.ok(sessionModel);
+	await models.completeSimple(sessionModel, context, { fetch, reasoning: "high" });
+	await models.completeSimple(sessionModel, context, { fetch, reasoning: "max" });
+	await models.completeSimple(sessionModel, context, { fetch });
+	assert.deepEqual(efforts, ["high", undefined, undefined]);
+
+	await credentials.modify(provider.id, async () => fakeCredential({ reasoningEffortLevels: { [claude]: [] } }));
+	assert.equal((await models.getAvailable(provider.id)).find(({ id }) => id === claude)?.reasoning, false);
+	await models.completeSimple(sessionModel, context, { fetch, reasoning: "high" });
+	assert.deepEqual(efforts, ["high", undefined, undefined, undefined]);
+});
+
 test("a WebSocket model sends its wire ID, streams tools, and never uses HTTP", async (t) => {
 	const { provider, credentials, models } = setup();
 	await credentials.modify(provider.id, async () =>
@@ -349,7 +402,7 @@ test("a WebSocket model sends its wire ID, streams tools, and never uses HTTP", 
 	};
 	const signal = AbortSignal.timeout(5_000);
 	const complete = await models.completeSimple(model, context, { fetch, signal });
-	assert.equal(complete.stopReason, "toolUse", complete.errorMessage);
+	assert.equal(complete.stopReason, "toolUse", complete.errorMessage ?? "unexpected stop reason");
 	assert.equal(complete.provider, provider.id);
 	assert.equal(complete.model, websocketAlias);
 	assert.partialDeepStrictEqual(complete.content, [
