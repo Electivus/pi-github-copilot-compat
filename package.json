@@ -1,14 +1,31 @@
 {
 	"name": "pi-github-copilot-compat",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"private": true,
 	"description": "Pi extension: GitHub Copilot models over Chat Completions and Responses over WebSocket",
 	"type": "module",
-	"keywords": ["pi-package"],
+	"license": "MIT",
+	"author": "Electivus",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Electivus/pi-github-copilot-compat.git"
+	},
+	"homepage": "https://github.com/Electivus/pi-github-copilot-compat#readme",
+	"bugs": {
+		"url": "https://github.com/Electivus/pi-github-copilot-compat/issues"
+	},
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"github-copilot"
+	],
 	"pi": {
-		"extensions": ["./index.ts"]
+		"extensions": [
+			"./index.ts"
+		]
 	},
 	"scripts": {
+		"check": "tsc -p .",
 		"test": "node --test test.ts websocket.test.ts"
 	},
 	"peerDependencies": {
@@ -17,9 +34,11 @@
 	},
 	"devDependencies": {
 		"@earendil-works/pi-ai": "1.6.0",
-		"@earendil-works/pi-coding-agent": "1.6.0"
+		"@earendil-works/pi-coding-agent": "1.6.0",
+		"@types/node": "26.6.6",
+		"typescript": "7.0.2"
 	},
 	"engines": {
-		"node": ">=22.19.0"
+		"node": ">=24"
 	}
 }
