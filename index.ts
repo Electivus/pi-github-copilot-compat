@@ -1,6 +1,6 @@
 // Run pi -e ./index.ts from this repository, or install the repository as a Pi package.
 // Use /login github-copilot-compat. This reuses native Copilot login, including its model-policy setup.
-// Models ending in -ws use Responses over WebSocket only. Sign in again to refresh an older catalog.
+// Models with -ws in their ID use Responses over WebSocket only. Sign in again to refresh an older catalog.
 // The picker is gated; direct model lookups and local models.json overrides are not a security boundary.
 
 import type {
@@ -195,8 +195,8 @@ function acceptedLevel<L extends keyof ThinkingLevelMap>(model: Model<Api>, leve
 // The first price tier's limit is the context VS Code offers by default; `-long` is the model's whole window, at
 // the higher price Copilot charges a request above that limit.
 function contextSizes<M extends Model<Api>>(model: M): M[] {
-	const limit = model.cost.tiers?.[0]?.inputTokensAbove;
-	if (limit === undefined || limit >= model.contextWindow) return [model];
+	const limit = Math.min(...(model.cost.tiers ?? []).map((tier) => tier.inputTokensAbove));
+	if (limit >= model.contextWindow) return [model];
 	return [
 		{ ...model, contextWindow: limit, maxTokens: Math.min(model.maxTokens, limit) },
 		{ ...model, id: `${model.id}-long`, name: `${model.name} (long context)` },

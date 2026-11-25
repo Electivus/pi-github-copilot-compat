@@ -8,7 +8,7 @@
 
 ### Added
 
-- `-long` model entries with the whole context window, for models that Copilot bills at a higher rate above the first price tier.
+- `-long` and `-ws-long` model entries with the whole context window, for models that Copilot bills at a higher rate above the first price tier.
 
 ## [0.3.0]
 
