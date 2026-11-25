@@ -59,7 +59,17 @@ A credential created before version 0.2.0 has no levels stored. They appear afte
 
 Copilot does not return the reasoning text for every model, so Pi may show no thinking block even though the model reasoned and the tokens were counted.
 
-### Prompt cache
+### Context size
+
+Copilot prices some models in two tiers: a request whose prompt passes the first tier's limit is billed at a higher rate, for the whole request. On GPT-6.1 Sol that limit is 272,000 tokens and the rate doubles; on Claude Haiku 5.5 it is 100,000 tokens and the rate is five times higher.
+
+For such a model the extension lists two entries, as VS Code's context size picker does:
+
+- the plain model, whose context window is the first tier's limit, so Pi compacts before a request reaches the higher rate;
+- the same model with the suffix `-long`, with the whole window.
+
+A model with one price for its whole window, such as Claude Opus 5.5, has a single entry with the whole window. The limits come from the price tiers in Pi's built-in catalog.
+
 
 Copilot caches a Claude prompt by itself for five minutes, on Chat Completions as on the Messages API. A session that pauses longer, for example while subagents work, pays to write the whole context again.
 

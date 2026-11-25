@@ -127,6 +127,7 @@ test("native enterprise OAuth login gates exact advertised endpoints and keeps c
 		[claude, "openai-completions"],
 		[gemini, "openai-completions"],
 		[websocketAlias, "openai-responses"],
+		[`${websocketAlias}-long`, "openai-responses"],
 	]);
 	assert.ok(available.every((model) => model.provider === provider.id));
 	assert.equal(models.getModel(provider.id, websocketAlias)?.api, "openai-responses");
@@ -381,6 +382,48 @@ test("long cache retention marks a Claude request's system prompt and last messa
 	assert.ok(marks[1].every(([, mark]) => mark === undefined));
 	assert.deepEqual(marks[2], marks[0]);
 	assert.ok(marks[3].every(([, mark]) => mark === undefined));
+});
+
+test("a model with a pricier long-context tier defaults to the cheaper window and adds a -long variant", async () => {
+	const { provider, credentials, models } = setup();
+	const native = builtinProviders().find((entry) => entry.id === "github-copilot");
+	const tiered = native?.getModels().find(({ id }) => id === websocketOnly);
+	const limit = tiered?.cost.tiers?.[0]?.inputTokensAbove;
+	assert.ok(tiered && limit && limit < tiered.contextWindow);
+	const sizes = (id: string) => models.getModel(provider.id, id)?.contextWindow;
+	assert.deepEqual(
+		[websocketOnly, `${websocketOnly}-long`, websocketAlias, `${websocketAlias}-long`].map(sizes),
+		[limit, tiered.contextWindow, limit, tiered.contextWindow],
+	);
+	// Claude Sonnet has one price for its whole window, so it gets no variant.
+	assert.equal(sizes(claude), native?.getModels().find(({ id }) => id === claude)?.contextWindow);
+	assert.equal(models.getModel(provider.id, `${claude}-long`), undefined);
+
+	await credentials.modify(provider.id, async () =>
+		fakeCredential({
+			availableModelIds: [websocketOnly],
+			chatCompletionsModelIds: [websocketOnly],
+			webSocketModelIds: [],
+			reasoningEffortLevels: { [websocketOnly]: ["high"] },
+		}),
+	);
+	const available = await models.getAvailable(provider.id);
+	assert.deepEqual(available.map(({ id }) => id).sort(), [websocketOnly, `${websocketOnly}-long`]);
+	const long = models.getModel(provider.id, `${websocketOnly}-long`);
+	assert.ok(long);
+	const sent: unknown[] = [];
+	const fetch: typeof globalThis.fetch = async (input, init) => {
+		const payload: { model: unknown; reasoning_effort?: unknown } = await new Request(input, init).json();
+		sent.push([payload.model, payload.reasoning_effort]);
+		const chunk = { id: "fake-chunk", choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }] };
+		return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, {
+			headers: { "Content-Type": "text/event-stream" },
+		});
+	};
+	const context: Context = { messages: [{ role: "user", timestamp: 0, content: "Hello" }] };
+	const reply = await models.completeSimple(long, context, { fetch, reasoning: "high" });
+	assert.deepEqual(sent, [[websocketOnly, "high"]]);
+	assert.equal(reply.model, `${websocketOnly}-long`);
 });
 
 test("a WebSocket model sends its wire ID, streams tools, and never uses HTTP", async (t) => {

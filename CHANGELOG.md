@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.0]
+
+### Changed
+
+- A model with a pricier long-context tier now has the first tier's limit as its context window (for example 272,000 tokens on GPT-6.1 Sol, 100,000 on Claude Haiku 5.5). Pick the new `-long` entry for the whole window.
+
+### Added
+
+- `-long` model entries with the whole context window, for models that Copilot bills at a higher rate above the first price tier.
+
 ## [0.3.0]
 
 ### Added
