@@ -1,6 +1,6 @@
 {
 	"name": "pi-github-copilot-compat",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"private": true,
 	"description": "Pi extension: GitHub Copilot models over Chat Completions and Responses over WebSocket",
 	"type": "module",
